@@ -1,0 +1,124 @@
+//SCL---A5, SDA---A4
+
+#include <CapacitiveSensor.h>
+#include <Wire.h>
+
+const int <MPU = 0x68;  // MPU 6050의 I2C 기본 주소
+int 16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ, GyZTemp;
+// int swPin = 4;
+int led1_1 = 6;
+int led1_2 = 9;
+int led2_1 = 5;
+int led2_2 = 11;
+int ledval = 0;
+
+CapacitiveSensor cs_4_2 = CapacitiveSensor(4, 12);
+// 10M resistor between pins 4 & 2, pin 2 is sensor pin,
+// add a wire and or foil if desired
+
+boolean buttonState = 0;
+
+int MIDIchannel = 0;
+int MIDIval1 = 0;
+int MIDIval2 = 0;
+
+void setup() {
+  Wire.begin();                // Wire 라이브러리 초기화
+  Wire.beginTransmission(MPU); // MPU로 데이터 전송 시작
+  Wire.write(0x6B);            // PWR_MGMT_1 register
+  Wire.write(0);               // MPU-6050 시작모드로
+  Wire.endTransmission(true);
+
+  // pinMode(swPin, INPUT);
+  pinMode(led1_1, OUTPUT);
+  pinMode(led1_2, OUTPUT);
+  pinMode(led2_1, OUTPUT);
+  pinMode(led2_2, OUTPUT);
+
+  Serial.begin(57600);
+}
+
+void loop() {
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 14, true);
+
+  AcX = Wire.read() << 8 | Wire.read();  // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
+  AcY = Wire.read() << 8 | Wire.read();  // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
+  AcZ = Wire.read() << 8 | Wire.read();  // 0x3F (ACCEL_ZOUT_H) & 0x30 (ACCEL_ZOUT_L)
+  Tmp = Wire.read() << 8 | Wire.read();  // 0x41 (TEMP_OUT_H) & 0x42 (TEMP_OUT_L)
+  GyX = Wire.read() << 8 | Wire.read();  // 0x43 (GYRO_XOUT_H) & 0x44 (GYRO_XOUT_L)
+  GyY = Wire.read() << 8 | Wire.read();  // 0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
+  GyZ = Wire.read() << 8 | Wire.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
+
+  long total1 = cs_4_2.CapacitiveSensor(30);
+  if (total1 > 0 && total1 < 30000) {
+    buttonState = true;
+  }
+  if (abs(AcZ) > abs(AcX) && abs(AcZ) > abs(AcY)) {
+    if (AcZ > 0) {
+      MIDIchannel = 128;
+    }
+    if (AcZ < 0) {
+      MIDIchannel = 129;
+    }
+  }
+
+  if (buttonState == true) {
+
+    if (MIDIchannel == 128) {
+      if (GyZ >= 70 && GyZ < 32768) {
+        MIDIval1 -= sqrt(abs(GyZ)) / 25;
+        MIDIval1 = constrain(MIDIval1, 0, 127);
+      }
+      else if (GyZ < -70 && GyZ > -32768) {
+        MIDIval1 += sqrt(abs(GyZ)) / 25;
+        MIDIval1 = constrain(MIDIval1, 0, 127);
+      }
+      Serial.write(255);
+      Serial.write(MIDIval1);
+      Serial.write(MIDIchannel);
+      // ledval = map(MIDIval1, 0, 127, 0, 255);
+      ledUpdate();
+    }
+
+    if (MIDIchannel == 129) {
+      if (GyZ >= 70 && GyZ < 32768) {
+        MIDIval2 += sqrt(abs(GyZ)) / 25;
+        MIDIval2 = constrain(MIDIval2, 0, 127);
+      }
+      else if (GyZ < -70 && GyZ > -32768) {
+        MIDIval2 -= sqrt(abs(GyZ)) / 25;
+        MIDIval2 = constrain(MIDIval2, 0, 127);
+      }
+      Serial.write(255);
+      Serial.write(MIDIval2);
+      Serial.write(MIDIchannel);
+      // ledval = map(MIDIval2, 0, 127, 0, 255);
+      ledUpdate();
+    }
+  }
+
+  delay(30);
+  ledUpdate();
+  if (MIDIchannel == 128) {
+    analogWrite(led1_1, ledval);
+    analogWrite(led1_2, ledval);
+  }
+  else if (MIDIchannel == 129) {
+    analogWrite(led2_1, ledval);
+    analogWrite(led2_2, ledval);
+  }
+}
+
+void ledUpdate() {
+  switch (MIDIchannel) {
+    case 128 :
+      ledval = map(MIDIval1, 0, 127, 0, 255);
+      break;
+    case 129 :
+      ledval = map(MIDIval2, 0, 127, 0, 255);
+      break;
+  }
+}
